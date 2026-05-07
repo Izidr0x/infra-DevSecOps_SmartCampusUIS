@@ -1,0 +1,24 @@
+jenkins:
+  systemMessage: "Jenkins privado detrás de Nginx con HTTPS interno. (Proyecto de grado)"
+  numExecutors: 3
+  mode: NORMAL
+  slaveAgentPort: -1
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_ID}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+
+  authorizationStrategy:
+    globalMatrix:
+      permissions:
+        - "Overall/Administer:${JENKINS_ADMIN_ID}"
+        - "Overall/Read:authenticated"
+        - "Job/Read:authenticated"
+        - "View/Read:authenticated"
+
+unclassified:
+  location:
+    url: "${JENKINS_URL}"
