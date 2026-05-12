@@ -11,19 +11,25 @@ pipeline {
     }
 
     stages {
-        stage('Git checkout') {
-            steps {
-                git branch: 'main', url: 'https://github.com/PWN3D777/DevSecOps_SmartCampusUIS.git'
-            }
-        }
-
         stage('Get Artifacts from CI-01') {
             steps {
                 copyArtifacts(
                     projectName: 'CI-01 Source Compile - Unit Validation',
                     selector: [$class: 'StatusBuildSelector', stable: false],
-                    filter: 'admin_microservice/target/*.jar, data_microservice/application/target/*.jar'
+                    filter: '.git_commit, admin_microservice/target/*.jar, data_microservice/application/target/*.jar'
                 )
+            }
+        }
+        
+        stage('Git checkout') {
+            steps {
+                script {
+                    env.SOURCE_COMMIT = readFile('.git_commit').trim()
+                }
+        
+                git branch: 'main', url: 'https://github.com/PWN3D777/DevSecOps_SmartCampusUIS.git'
+        
+                sh "git checkout ${SOURCE_COMMIT}"
             }
         }
 
@@ -95,6 +101,39 @@ pipeline {
                 sh 'docker compose up -d db mongo emqx influxdb rabbitmq minio'
             }
         }
+        
+        stage('Prepare telegraf config') {
+            steps {
+                sh '''
+                    set -e
+        
+                    echo "=== Validando telegraf.conf desde Jenkins ==="
+                    ls -la data/telegraf
+        
+                    test -f data/telegraf/telegraf.conf || {
+                      echo "FAIL: data/telegraf/telegraf.conf no es archivo desde Jenkins"
+                      exit 1
+                    }
+        
+                    echo "=== Sincronizando telegraf.conf al path que ve Docker daemon ==="
+                    cat data/telegraf/telegraf.conf | docker run --rm -i \
+                      -v "$PWD/data/telegraf:/mnt" \
+                      alpine:3.20 \
+                      sh -c 'rm -rf /mnt/telegraf.conf && cat > /mnt/telegraf.conf && chmod 644 /mnt/telegraf.conf && test -f /mnt/telegraf.conf'
+        
+                    echo "OK: telegraf.conf preparado correctamente"
+                '''
+            }
+        }
+        
+        stage('Deploy telegraf') {
+            steps {
+                sh '''
+                    docker compose rm -sf telegraf || true
+                    docker compose up -d --force-recreate telegraf
+                '''
+            }
+        }
 
         stage('Wait dependencies') {
             steps {
@@ -130,7 +169,7 @@ pipeline {
                     echo "=== Estado de servicios ==="
                     docker compose ps
         
-                    for svc in db mongo emqx influxdb rabbitmq minio admin data gateway frontend grafana; do
+                    for svc in db mongo emqx influxdb rabbitmq minio telegraf admin data gateway frontend grafana; do
                       docker compose ps --services --filter status=running | grep -x "$svc" >/dev/null || {
                         echo "FAIL: $svc no está corriendo"
                         exit 1
