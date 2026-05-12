@@ -16,12 +16,13 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/PWN3D777/DevSecOps_SmartCampusUIS.git'
             }
         }
+
         stage('Get Artifacts from CI-01') {
             steps {
                 copyArtifacts(
                     projectName: 'CI-01 Source Compile - Unit Validation',
                     selector: [$class: 'StatusBuildSelector', stable: false],
-                    filter: 'admin_microservice/target/*.jar, data_microservice/target/*.jar'
+                    filter: 'admin_microservice/target/*.jar, data_microservice/application/target/*.jar'
                 )
             }
         }
@@ -66,6 +67,7 @@ pipeline {
                       > trivy-reports/data-trivy.txt 2>&1 || true
                 '''
             }
+
             post {
                 always {
                     archiveArtifacts artifacts: 'trivy-reports/*.txt', fingerprint: true, allowEmptyArchive: true
@@ -90,7 +92,7 @@ pipeline {
 
         stage('Deploy dependencies') {
             steps {
-                sh 'docker compose up -d db mongo emqx influxdb'
+                sh 'docker compose up -d db mongo emqx influxdb rabbitmq minio'
             }
         }
 
@@ -128,7 +130,7 @@ pipeline {
                     echo "=== Estado de servicios ==="
                     docker compose ps
         
-                    for svc in db mongo emqx influxdb admin data gateway frontend grafana; do
+                    for svc in db mongo emqx influxdb rabbitmq minio admin data gateway frontend grafana; do
                       docker compose ps --services --filter status=running | grep -x "$svc" >/dev/null || {
                         echo "FAIL: $svc no está corriendo"
                         exit 1
@@ -148,7 +150,7 @@ pipeline {
                       fi
                     }
         
-                    check_http "data" "http://${HOST_IP}:8082/"
+                    check_http "data" "http://${HOST_IP}:8082/actuator/health"
                     check_http "gateway" "http://${HOST_IP}:8080/"
                     check_http "frontend" "http://${HOST_IP}:4000/"
                 '''
