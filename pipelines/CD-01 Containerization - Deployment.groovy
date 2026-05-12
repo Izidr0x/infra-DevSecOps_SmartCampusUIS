@@ -48,7 +48,7 @@ pipeline {
                       -v /var/run/docker.sock:/var/run/docker.sock \
                       -v "$PWD/trivy-reports:/reports" \
                       aquasec/trivy:latest image \
-                      --severity HIGH,CRITICAL \
+                      --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
                       --exit-code 0 \
                       --format table \
                       --no-progress \
@@ -59,7 +59,7 @@ pipeline {
                       -v /var/run/docker.sock:/var/run/docker.sock \
                       -v "$PWD/trivy-reports:/reports" \
                       aquasec/trivy:latest image \
-                      --severity HIGH,CRITICAL \
+                      --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
                       --exit-code 0 \
                       --format table \
                       --no-progress \
