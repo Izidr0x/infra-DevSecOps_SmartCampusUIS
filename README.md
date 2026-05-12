@@ -37,9 +37,9 @@ En esta implementación:
 │
 ├── pipelines/
 │   ├── README.md
-│   ├── ci-01-source-compile-unit-validation.groovy
-│   ├── ci-02-security-quality-gate.groovy
-│   ├── cd-01-containerization-deployment.groovy
-│   └── integration-pipeline.groovy
+│   ├── CI-01 Source Compile - Unit Validation.groovy
+│   ├── CI-02 Security - Quality Gate.groovy
+│   ├── CD-01 Containerization - Deployment.groovy
+│   └── Full Pipeline.groovy
 │
 └── README.md
