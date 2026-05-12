@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     tools {
-        jdk 'JDK-17'
+        jdk 'JDK-21'
         maven 'maven3'
     }
 
@@ -16,11 +16,13 @@ pipeline {
         stage('Git checkout') {
             steps {
                 git branch: params.BRANCH_NAME, url: params.REPO_URL
+
                 script {
                     if (params.GIT_COMMIT?.trim()) {
                         sh "git checkout ${params.GIT_COMMIT}"
                     }
                 }
+
                 sh 'git rev-parse HEAD > .git_commit'
             }
         }
@@ -30,6 +32,7 @@ pipeline {
                 dir('admin_microservice') {
                     sh 'mvn -B clean compile'
                 }
+
                 dir('data_microservice') {
                     sh 'mvn -B clean compile'
                 }
@@ -41,6 +44,7 @@ pipeline {
                 dir('admin_microservice') {
                     sh 'mvn -B test'
                 }
+
                 dir('data_microservice') {
                     sh 'mvn -B test'
                 }
@@ -52,8 +56,9 @@ pipeline {
                 dir('admin_microservice') {
                     sh 'mvn -B -DskipTests package'
                 }
+
                 dir('data_microservice') {
-                    sh 'mvn -B -DskipTests package'
+                    sh 'mvn -B -DskipTests package -pl application -am'
                 }
             }
         }
@@ -61,8 +66,9 @@ pipeline {
 
     post {
         always {
-            junit '**/target/surefire-reports/*.xml'
-            archiveArtifacts artifacts: 'admin_microservice/target/*.jar, data_microservice/target/*.jar, .git_commit, **/Dockerfile', fingerprint: true
+            junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
+
+            archiveArtifacts artifacts: 'admin_microservice/target/*.jar, data_microservice/application/target/*.jar, .git_commit, **/Dockerfile', fingerprint: true
         }
     }
 }
