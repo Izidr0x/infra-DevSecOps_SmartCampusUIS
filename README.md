@@ -43,7 +43,7 @@ En esta implementación:
 │   └── Full Pipeline.groovy
 │
 └── README.md
-
+```
 ---
 
 # Receta de montaje de la infraestructura DevSecOps Smart Campus UIS
