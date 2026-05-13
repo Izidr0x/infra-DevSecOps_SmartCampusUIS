@@ -3,9 +3,12 @@ services:
     image: sonarqube:lts-community
     container_name: sonarqube
     restart: always
+    depends_on:
+      - sonarqube_db
     ports:
       - "9000:9000"
     networks:
+      - jenkins_jenkins_net
       - sonarnet
     environment:
       SONAR_JDBC_URL: ${SONAR_JDBC_URL}
@@ -18,15 +21,33 @@ services:
       - sonarqube_extensions:/opt/sonarqube/extensions
       - sonarqube_bundled-plugins:/opt/sonarqube/lib/bundled-plugins
 
+  sonarqube_db:
+    image: postgres:16
+    container_name: sonarqube_postgres
+    restart: always
+    networks:
+      - sonarnet
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
 networks:
+  jenkins_jenkins_net:
+    external: true
+
   sonarnet:
     driver: bridge
     ipam:
       config:
         - subnet: 172.16.0.0/24
+
 volumes:
   sonarqube_conf:
   sonarqube_logs:
   sonarqube_data:
   sonarqube_extensions:
   sonarqube_bundled-plugins:
+  postgres_data:
