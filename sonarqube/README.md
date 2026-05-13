@@ -4,6 +4,13 @@ Este directorio contiene la configuración utilizada para desplegar SonarQube Co
 
 La implementación incluye SonarQube y una base de datos PostgreSQL dedicada dentro del mismo archivo `compose.yml`. PostgreSQL se utiliza como motor de persistencia para almacenar la configuración, proyectos, análisis, usuarios, métricas y resultados generados por SonarQube.
 
+## Indice:
+---
+
+[[_TOC_]]
+
+---
+
 ## Rol dentro del proyecto
 
 SonarQube se utiliza en el pipeline CI-02 para realizar análisis estático del código fuente y evaluar condiciones de calidad mediante Quality Gate. Su integración con Jenkins permite que el flujo CI/CD incorpore controles automáticos antes de continuar con las etapas posteriores.
