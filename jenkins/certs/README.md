@@ -80,7 +80,7 @@ extendedKeyUsage = serverAuth
 IP.1 = 192.168.x.x
 ```
 
-Es importante que el valor de `subjectAltName` coincida con la IP o dominio usado para acceder a Jenkins. Si no coincide, el navegador puede mostrar advertencias adicionales o rechazar la conexión.
+Es importante que las entradas definidas en la sección `[alt_names]` coincidan con la IP o el dominio usado para acceder a Jenkins. La línea `subjectAltName = @alt_names` solo indica que OpenSSL debe tomar esos valores desde dicha sección.
 
 ## Uso en Nginx
 
