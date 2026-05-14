@@ -2,17 +2,32 @@
 
 Este directorio contiene los archivos auxiliares usados para generar certificados autofirmados para el proxy Nginx que publica Jenkins mediante HTTPS interno.
 
+## Índice
+
+- [Rol dentro del proyecto](#rol-dentro-del-proyecto)
+- [Estructura sugerida](#estructura-sugerida)
+- [Generación del certificado](#generación-del-certificado)
+- [Configuración de OpenSSL](#configuración-de-openssl)
+- [Uso en Nginx](#uso-en-nginx)
+- [Archivos que no deben versionarse](#archivos-que-no-deben-versionarse)
+- [Validación](#validación)
+- [Consideraciones de seguridad](#consideraciones-de-seguridad)
+
 ## Rol dentro del proyecto
 
-El certificado se utiliza para permitir acceso HTTPS a Jenkins dentro del ambiente de pruebas. En esta implementación, Jenkins quedó detrás de Nginx y el proxy utiliza el certificado generado en este directorio para terminar TLS.
+El certificado se utiliza para permitir acceso HTTPS a Jenkins dentro del ambiente de pruebas.
+
+En esta implementación, Jenkins quedó detrás de Nginx y el proxy utiliza el certificado generado en este directorio para terminar TLS.
+
+SonarQube no utiliza este certificado porque no quedó publicado detrás de Nginx.
 
 ## Estructura sugerida
 
 ```text
 certs/
+├── README.md
 ├── gen_cert.sh
-├── openssl-ip.cnf.example
-└── README.md
+└── openssl-ip.cnf.example
 ```
 
 Los archivos `jenkins.key`, `jenkins.crt`, `.pem` u otros certificados reales no deben subirse al repositorio.
@@ -72,7 +87,7 @@ Es importante que el valor de `subjectAltName` coincida con la IP o dominio usad
 La configuración de Nginx referencia los archivos generados de la siguiente forma:
 
 ```nginx
-ssl_certificate     /etc/nginx/certs/jenkins.crt;
+ssl_certificate /etc/nginx/certs/jenkins.crt;
 ssl_certificate_key /etc/nginx/certs/jenkins.key;
 ```
 
@@ -96,23 +111,30 @@ jenkins/certs/*.crt
 jenkins/certs/*.pem
 ```
 
-## Consideraciones de seguridad
-
-- La llave privada `jenkins.key` no debe subirse al repositorio.
-- Si una llave privada fue publicada accidentalmente, debe considerarse comprometida y regenerarse.
-- Los certificados autofirmados son aceptables para un ambiente de pruebas, pero en producción se recomienda usar certificados emitidos por una autoridad confiable o por una CA interna controlada.
-- El acceso a los archivos de llave privada debe limitarse al usuario o servicio que los necesita.
-
 ## Validación
+
+Para revisar el certificado generado:
+
+```bash
+openssl x509 -in jenkins.crt -text -noout
+```
 
 Para revisar el certificado desde un cliente:
 
 ```bash
-openssl s_client -connect <IP_DEL_SERVIDOR>:443 -showcerts
+openssl s_client -connect IP_O_DNS_JENKINS:443 -showcerts
 ```
 
 Para probar el acceso HTTPS ignorando la validación de confianza del certificado:
 
 ```bash
-curl -k https://<IP_DEL_SERVIDOR>/login
+curl -k https://IP_O_DNS_JENKINS/login
 ```
+
+## Consideraciones de seguridad
+
+- La llave privada `jenkins.key` no debe subirse al repositorio.
+- Si una llave privada fue publicada accidentalmente, debe considerarse comprometida y regenerarse.
+- Los certificados autofirmados son aceptables para un ambiente de pruebas.
+- En producción se recomienda usar certificados emitidos por una autoridad confiable o por una CA interna controlada.
+- El acceso a los archivos de llave privada debe limitarse al usuario o servicio que los necesita.
