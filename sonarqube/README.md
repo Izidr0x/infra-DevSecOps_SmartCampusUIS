@@ -4,6 +4,25 @@ Este directorio contiene la configuración utilizada para desplegar SonarQube Co
 
 La implementación incluye SonarQube y una base de datos PostgreSQL dedicada dentro del mismo archivo `compose.yml`. PostgreSQL se utiliza como motor de persistencia para almacenar la configuración, proyectos, análisis, usuarios, métricas y resultados generados por SonarQube.
 
+## Índice
+
+- [Rol dentro del proyecto](#rol-dentro-del-proyecto)
+- [Arquitectura de red](#arquitectura-de-red)
+- [Estructura del directorio](#estructura-del-directorio)
+- [Archivo principal](#archivo-principal)
+- [Variables recomendadas](#variables-recomendadas)
+- [Despliegue](#despliegue)
+- [Creación automática de la base de datos](#creación-automática-de-la-base-de-datos)
+- [Acceso](#acceso)
+- [Base de datos](#base-de-datos)
+- [Volúmenes persistentes](#volúmenes-persistentes)
+- [Integración con Jenkins](#integración-con-jenkins)
+- [Quality Gate](#quality-gate)
+- [Operación básica](#operación-básica)
+- [Problemas comunes](#problemas-comunes)
+- [Consideraciones de seguridad](#consideraciones-de-seguridad)
+- [Notas del Compose](#notas-del-compose)
+
 ## Rol dentro del proyecto
 
 SonarQube se utiliza en el pipeline CI-02 para realizar análisis estático del código fuente y evaluar condiciones de calidad mediante Quality Gate. Su integración con Jenkins permite que el flujo CI/CD incorpore controles automáticos antes de continuar con las etapas posteriores.
@@ -165,7 +184,7 @@ El comando `docker compose down -v` elimina los volúmenes asociados al Compose,
 SonarQube queda disponible en:
 
 ```text
-http://<IP_DEL_SERVIDOR>:9000
+http://IP_O_DNS_SONARQUBE:9000
 ```
 
 En esta implementación no se configuró un proxy reverso Nginx para SonarQube.
@@ -317,6 +336,55 @@ Salir de la consola de PostgreSQL:
 \q
 ```
 
+## Problemas comunes
+
+### SonarQube intenta conectarse a una base que no existe
+
+El log puede mostrar algo parecido a:
+
+```text
+FATAL: database "sonarqube" does not exist
+```
+
+Esto significa que el valor final del JDBC apunta a una base diferente a la que existe en PostgreSQL.
+
+Validar:
+
+```env
+SONAR_JDBC_URL=jdbc:postgresql://sonarqube_db:5432/sonar_db
+```
+
+Revisar bases creadas:
+
+```bash
+docker exec -it sonarqube_postgres psql -U sonar -d postgres -c "\l"
+```
+
+### SonarQube no alcanza a PostgreSQL
+
+Validar que ambos servicios estén en la red `sonarnet`:
+
+```bash
+docker network inspect sonarqube_sonarnet
+```
+
+o el nombre real generado por Docker Compose.
+
+### Jenkins no alcanza SonarQube
+
+Validar que SonarQube esté conectado a `jenkins_jenkins_net`:
+
+```bash
+docker network inspect jenkins_jenkins_net
+```
+
+Desde Jenkins:
+
+```bash
+docker exec -it jenkins-controller bash
+curl -I http://sonarqube:9000
+```
+
 ## Consideraciones de seguridad
 
 - No versionar el archivo `.env` con credenciales reales.
@@ -342,4 +410,18 @@ networks:
     driver: bridge
 ```
 
+El servicio `sonarqube` debe estar conectado a ambas redes:
+
+```yaml
+networks:
+  - jenkins_net
+  - sonarnet
+```
+
 El servicio PostgreSQL debe permanecer únicamente en `sonarnet` y no debe declarar la sección `ports`.
+
+El JDBC recomendado es:
+
+```env
+SONAR_JDBC_URL=jdbc:postgresql://sonarqube_db:5432/sonar_db
+```
