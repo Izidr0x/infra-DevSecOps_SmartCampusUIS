@@ -2,6 +2,33 @@
 
 Este directorio documenta las definiciones de los pipelines utilizados en Jenkins para automatizar el flujo CI/CD con enfoque DevSecOps del proyecto **Smart Campus UIS**.
 
+## Índice
+
+- [Nota sobre la implementación](#nota-sobre-la-implementación)
+- [Pipelines documentados](#pipelines-documentados)
+- [Flujo general](#flujo-general)
+- [CI-01 Source Compile - Unit Validation](#ci-01-source-compile---unit-validation)
+  - [Responsabilidades de CI-01](#responsabilidades-de-ci-01)
+  - [Herramientas usadas en CI-01](#herramientas-usadas-en-ci-01)
+  - [Etapas principales de CI-01](#etapas-principales-de-ci-01)
+  - [Artefactos generados por CI-01](#artefactos-generados-por-ci-01)
+- [CI-02 Security - Quality Gate](#ci-02-security---quality-gate)
+  - [Responsabilidades de CI-02](#responsabilidades-de-ci-02)
+  - [Herramientas usadas en CI-02](#herramientas-usadas-en-ci-02)
+  - [Etapas principales de CI-02](#etapas-principales-de-ci-02)
+  - [Aspectos relevantes de CI-02](#aspectos-relevantes-de-ci-02)
+- [CD-01 Containerization - Deployment](#cd-01-containerization---deployment)
+  - [Responsabilidades de CD-01](#responsabilidades-de-cd-01)
+  - [Herramientas usadas en CD-01](#herramientas-usadas-en-cd-01)
+  - [Etapas principales de CD-01](#etapas-principales-de-cd-01)
+  - [Servicios validados en el Smoke Test](#servicios-validados-en-el-smoke-test)
+- [Uso de Trivy](#uso-de-trivy)
+- [Full Pipeline](#full-pipeline)
+- [Credenciales requeridas](#credenciales-requeridas)
+- [Artefactos y trazabilidad](#artefactos-y-trazabilidad)
+- [Nombres esperados en Jenkins](#nombres-esperados-en-jenkins)
+- [Consideraciones](#consideraciones)
+
 ## Nota sobre la implementación
 
 En esta implementación, los pipelines no fueron almacenados como `Jenkinsfile` dentro del repositorio de la aplicación. Fueron configurados directamente desde la interfaz de Jenkins como `Pipeline script`.
@@ -39,7 +66,7 @@ El pipeline `Full Pipeline` ejecuta de forma secuencial los tres jobs principale
 
 Este pipeline corresponde a la primera etapa del flujo de integración continua. Su propósito es obtener una versión identificable del código fuente, compilar los microservicios priorizados, ejecutar pruebas unitarias y generar los artefactos `.jar` que serán utilizados por las etapas posteriores.
 
-### Responsabilidades
+### Responsabilidades de CI-01
 
 - Obtener el código fuente desde el repositorio Git.
 - Permitir seleccionar rama y commit específico mediante parámetros.
@@ -49,24 +76,24 @@ Este pipeline corresponde a la primera etapa del flujo de integración continua.
 - Empaquetar los artefactos `.jar`.
 - Archivar artefactos, Dockerfiles y evidencias de la ejecución.
 
-### Herramientas usadas
+### Herramientas usadas en CI-01
 
 - JDK 21 configurado en Jenkins como `JDK-21`.
 - Maven configurado en Jenkins como `maven3`.
 - Plugin JUnit para publicar resultados de pruebas.
 - `archiveArtifacts` para conservar artefactos y evidencias.
 
-### Etapas principales
+### Etapas principales de CI-01
 
 | Etapa | Descripción |
 |---|---|
 | `Git checkout` | Clona el repositorio, permite seleccionar rama y, si se define, hace checkout de un commit específico. También genera el archivo `.git_commit` con el commit real construido. |
 | `Code compile` | Ejecuta `mvn -B clean compile` en `admin_microservice` y `data_microservice`. |
 | `Unit Test` | Ejecuta `mvn -B test` en los microservicios priorizados. |
-| `Build artifact` | Genera el `.jar` del microservicio administrativo con `mvn -B -DskipTests package` y el artefacto del microservicio de datos con `mvn -B -DskipTests package -pl application -am`. |
+| `Build artifact` | Genera los `.jar` requeridos por las etapas posteriores. |
 | `post` | Publica resultados JUnit con `allowEmptyResults: true` y archiva artefactos, `.git_commit` y Dockerfiles. |
 
-### Artefactos generados
+### Artefactos generados por CI-01
 
 ```text
 admin_microservice/target/*.jar
@@ -79,7 +106,7 @@ data_microservice/application/target/*.jar
 
 Este pipeline corresponde a la etapa de validación de calidad y seguridad del código. Su objetivo es recuperar los artefactos generados por CI-01, analizar exactamente la misma versión del código fuente, ejecutar SonarQube, validar el Quality Gate y realizar análisis de dependencias con OWASP Dependency-Check.
 
-### Responsabilidades
+### Responsabilidades de CI-02
 
 - Recuperar artefactos generados en CI-01.
 - Leer el commit registrado en `.git_commit`.
@@ -92,7 +119,7 @@ Este pipeline corresponde a la etapa de validación de calidad y seguridad del c
 - Publicar y archivar el reporte de Dependency-Check.
 - Conservar artefactos necesarios para trazabilidad.
 
-### Herramientas usadas
+### Herramientas usadas en CI-02
 
 - JDK 21 configurado en Jenkins como `JDK-21`.
 - Maven configurado en Jenkins como `maven3`.
@@ -102,21 +129,21 @@ Este pipeline corresponde a la etapa de validación de calidad y seguridad del c
 - Credencial `nvd-api-key` para consultar la base NVD.
 - Plugin Copy Artifact para recuperar artefactos desde CI-01.
 
-### Etapas principales
+### Etapas principales de CI-02
 
 | Etapa | Descripción |
 |---|---|
-| `Get Artifacts from Pipeline 1` | Copia desde CI-01 el archivo `.git_commit` y los artefactos `.jar` generados para `admin_microservice` y `data_microservice/application`. |
+| `Get Artifacts from Pipeline 1` | Copia desde CI-01 el archivo `.git_commit` y los artefactos `.jar` generados. |
 | `Git checkout` | Lee el commit desde `.git_commit`, clona el repositorio y hace checkout del mismo commit analizado en CI-01. |
 | `Prepare binaries for analysis` | Ejecuta compilación sin pruebas para generar las clases requeridas por SonarQube. |
 | `Sonarqube Analysis` | Ejecuta `sonar-scanner` sobre los microservicios priorizados y define explícitamente las rutas de binarios Java. |
 | `Quality Gate` | Espera el resultado del Quality Gate, imprime el estado recibido y detiene el pipeline con `error` si el estado es diferente de `OK`. |
-| `OWASP CHECK` | Ejecuta OWASP Dependency-Check sobre `admin_microservice` y `data_microservice`, usando la API Key de la NVD. |
+| `OWASP CHECK` | Ejecuta OWASP Dependency-Check sobre los microservicios, usando la API Key de la NVD. |
 | `post` | Archiva artefactos, `.git_commit`, Dockerfiles y `dependency-check-report.xml`. |
 
-### Aspectos relevantes
+### Aspectos relevantes de CI-02
 
-En esta versión del pipeline, CI-02 ya no analiza un estado genérico de la rama principal, sino el commit exacto generado por CI-01. Esto mejora la trazabilidad porque los resultados de SonarQube y OWASP Dependency-Check quedan asociados a la misma versión del código que fue compilada y empaquetada inicialmente.
+En esta versión del pipeline, CI-02 no analiza un estado genérico de la rama principal, sino el commit exacto generado por CI-01. Esto mejora la trazabilidad porque los resultados de SonarQube y OWASP Dependency-Check quedan asociados a la misma versión del código que fue compilada y empaquetada inicialmente.
 
 También se agregó una etapa de preparación de binarios para que SonarQube pueda analizar correctamente proyectos Java, especialmente en el caso del microservicio de datos, que maneja una estructura modular.
 
@@ -124,7 +151,7 @@ También se agregó una etapa de preparación de binarios para que SonarQube pue
 
 Este pipeline corresponde a la etapa de construcción de imágenes, escaneo de contenedores, publicación en Docker Hub, despliegue con Docker Compose y verificación básica posterior al despliegue.
 
-### Responsabilidades
+### Responsabilidades de CD-01
 
 - Recuperar artefactos generados en CI-01.
 - Leer el commit registrado en `.git_commit`.
@@ -139,7 +166,7 @@ Este pipeline corresponde a la etapa de construcción de imágenes, escaneo de c
 - Preparar y recrear el servicio Telegraf.
 - Ejecutar pruebas básicas de humo sobre los servicios desplegados.
 
-### Herramientas usadas
+### Herramientas usadas en CD-01
 
 - Docker configurado en Jenkins como `docker`.
 - Docker Compose disponible en el entorno de ejecución.
@@ -147,17 +174,17 @@ Este pipeline corresponde a la etapa de construcción de imágenes, escaneo de c
 - Credencial de Docker Hub configurada en Jenkins.
 - Plugin Copy Artifact para recuperar artefactos desde CI-01.
 
-### Etapas principales
+### Etapas principales de CD-01
 
 | Etapa | Descripción |
 |---|---|
 | `Get Artifacts from CI-01` | Copia desde CI-01 el archivo `.git_commit` y los artefactos `.jar` generados. |
 | `Git checkout` | Lee el commit desde `.git_commit`, clona el repositorio y hace checkout del mismo commit construido previamente. |
-| `Docker build` | Construye las imágenes `adminprb` y `data`, usando el número de build como tag y generando también el tag `latest`. |
+| `Docker build` | Construye las imágenes de los microservicios, usando el número de build como tag y generando también el tag `latest`. |
 | `Trivy scan` | Ejecuta Trivy como contenedor temporal para analizar las imágenes construidas. |
 | `Docker push` | Autentica contra Docker Hub y publica las imágenes generadas. |
 | `Deploy dependencies` | Levanta servicios base como `db`, `mongo`, `emqx`, `influxdb`, `rabbitmq` y `minio`. |
-| `Prepare telegraf config` | Valida la existencia de `data/telegraf/telegraf.conf` y sincroniza el archivo para que sea visible desde el Docker daemon. |
+| `Prepare telegraf config` | Valida y sincroniza la configuración de Telegraf para que sea visible desde el Docker daemon. |
 | `Deploy telegraf` | Elimina y recrea el servicio `telegraf` para aplicar la configuración preparada. |
 | `Wait dependencies` | Espera la inicialización inicial de las dependencias. |
 | `Deploy admin and data` | Despliega los microservicios principales `admin` y `data`. |
@@ -196,9 +223,21 @@ El criterio principal de esta validación es confirmar disponibilidad inicial. U
 
 ## Uso de Trivy
 
-Trivy no se despliega como servicio persistente dentro de la infraestructura. Su ejecución se realiza temporalmente durante el pipeline CD-01 mediante la imagen oficial `aquasec/trivy:latest`.
+Trivy no se despliega como servicio persistente dentro de la infraestructura. Su ejecución se realiza temporalmente durante el pipeline CD-01 mediante la imagen oficial:
 
-El análisis se realiza sobre las imágenes Docker construidas en la misma ejecución del pipeline. Los reportes se almacenan en el directorio `trivy-reports/` y luego se archivan como artefactos de Jenkins.
+```text
+aquasec/trivy:latest
+```
+
+El análisis se realiza sobre las imágenes Docker construidas en la misma ejecución del pipeline.
+
+Los reportes se almacenan en el directorio:
+
+```text
+trivy-reports/
+```
+
+y luego se archivan como artefactos de Jenkins.
 
 En esta versión del pipeline, Trivy se ejecuta considerando todos los niveles de severidad:
 
@@ -224,7 +263,7 @@ Su objetivo es permitir una ejecución completa del flujo desde la integración 
 
 ## Credenciales requeridas
 
-Los pipelines requieren credenciales configuradas en Jenkins:
+Los pipelines requieren credenciales configuradas en Jenkins.
 
 | Credencial | Uso |
 |---|---|
@@ -245,13 +284,46 @@ Los pipelines archivan artefactos como:
 - reportes de Trivy;
 - reporte de OWASP Dependency-Check.
 
-Esto permite relacionar cada ejecución del pipeline con el código fuente, los artefactos generados, las imágenes construidas y los resultados de análisis.
+Esto permite relacionar cada ejecución del pipeline con:
+
+- el código fuente analizado;
+- el commit específico;
+- los artefactos generados;
+- las imágenes construidas;
+- los resultados de análisis;
+- el despliegue realizado.
+
+## Nombres esperados en Jenkins
+
+Los scripts dependen de ciertos nombres configurados en Jenkins.
+
+| Elemento | Nombre esperado |
+|---|---|
+| JDK | `JDK-21` |
+| Maven | `maven3` |
+| SonarScanner | `sonar-scanner` |
+| Servidor SonarQube | `Sonarqube-server` |
+| OWASP Dependency-Check | `Check-DP` |
+| API Key NVD | `nvd-api-key` |
+
+Los jobs deben llamarse:
+
+```text
+CI-01 Source Compile - Unit Validation
+CI-02 Security - Quality Gate
+CD-01 Containerization - Deployment
+Full Pipeline
+```
 
 ## Consideraciones
 
 - Aunque los pipelines fueron configurados desde la interfaz de Jenkins, se recomienda conservar estas copias en el repositorio para documentación, trazabilidad y recuperación.
 - En una evolución futura del proyecto, los scripts podrían migrarse a `Jenkinsfile` versionados dentro del repositorio de la aplicación.
 - Las IP internas, nombres de credenciales y nombres de jobs deben ajustarse según el ambiente donde se reproduzca la implementación.
+- No deben incluirse tokens, contraseñas ni llaves dentro de los scripts versionados.
+- El uso del socket de Docker desde Jenkins debe tratarse como una consideración técnica de seguridad del montaje, debido a que otorga al controlador capacidad de interactuar con el motor Docker del host.
+- El `Smoke Test` implementado corresponde a una validación básica de disponibilidad y no reemplaza pruebas funcionales, pruebas de integración ni pruebas de regresión.
+
 - No deben incluirse tokens, contraseñas ni llaves dentro de los scripts versionados.
 - El uso del socket de Docker desde Jenkins debe tratarse como una consideración técnica de seguridad del montaje, debido a que otorga al controlador capacidad de interactuar con el motor Docker del host.
 - El `Smoke Test` implementado corresponde a una validación básica de disponibilidad y no reemplaza pruebas funcionales, pruebas de integración ni pruebas de regresión.
