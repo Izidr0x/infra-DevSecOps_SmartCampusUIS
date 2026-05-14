@@ -1,101 +1,61 @@
 # Infraestructura DevSecOps Smart Campus UIS
 
-Este repositorio contiene la configuración y documentación de la infraestructura utilizada para soportar el flujo CI/CD con enfoque DevSecOps aplicado a la plataforma Smart Campus UIS.
+Este repositorio contiene la configuración y documentación de la infraestructura utilizada para soportar el flujo CI/CD con enfoque DevSecOps aplicado a la plataforma **Smart Campus UIS**.
 
-La infraestructura implementada contempla Jenkins como orquestador principal de los pipelines, SonarQube como herramienta de análisis de calidad y seguridad del código, OWASP Dependency Check para análisis de dependencias, y Trivy como herramienta temporal de escaneo de imágenes Docker dentro del pipeline de despliegue.
+La infraestructura contempla Jenkins como orquestador principal de los pipelines, Nginx como proxy reverso para Jenkins, SonarQube como plataforma de análisis de calidad y seguridad de código, PostgreSQL como base de datos dedicada de SonarQube, OWASP Dependency-Check para análisis de dependencias y Trivy como herramienta temporal de escaneo de imágenes Docker dentro del pipeline de despliegue.
+
+## Índice
+
+- [Alcance del repositorio](#alcance-del-repositorio)
+- [Arquitectura general](#arquitectura-general)
+- [Estructura del repositorio](#estructura-del-repositorio)
+- [Componentes principales](#componentes-principales)
+- [Redes Docker](#redes-docker)
+- [Requisitos previos del servidor](#requisitos-previos-del-servidor)
+  - [Dependencias requeridas](#dependencias-requeridas)
+  - [Instalación de dependencias en Rocky Linux 9](#instalación-de-dependencias-en-rocky-linux-9)
+  - [Ajustes recomendados para SonarQube](#ajustes-recomendados-para-sonarqube)
+  - [Validación de permisos de Docker para Jenkins](#validación-de-permisos-de-docker-para-jenkins)
+- [Receta de montaje](#receta-de-montaje)
+  - [1. Clonar el repositorio](#1-clonar-el-repositorio)
+  - [2. Preparar archivos de variables](#2-preparar-archivos-de-variables)
+  - [3. Generar certificados para Jenkins](#3-generar-certificados-para-jenkins)
+  - [4. Levantar Jenkins con Nginx](#4-levantar-jenkins-con-nginx)
+  - [5. Levantar SonarQube con PostgreSQL](#5-levantar-sonarqube-con-postgresql)
+  - [6. Configurar Jenkins](#6-configurar-jenkins)
+  - [7. Configurar SonarQube](#7-configurar-sonarqube)
+  - [8. Crear los jobs de pipeline](#8-crear-los-jobs-de-pipeline)
+  - [9. Ejecutar validación por bloques](#9-ejecutar-validación-por-bloques)
+- [Pipelines implementados](#pipelines-implementados)
+- [Credenciales requeridas](#credenciales-requeridas)
+  - [Obtención del token NVD](#obtención-del-token-nvd)
+  - [Registro del token NVD en Jenkins](#registro-del-token-nvd-en-jenkins)
+- [Variables y valores que deben ajustarse](#variables-y-valores-que-deben-ajustarse)
+- [Operación básica](#operación-básica)
+- [Evidencias a conservar](#evidencias-a-conservar)
+- [Problemas comunes](#problemas-comunes)
+- [Consideraciones de seguridad](#consideraciones-de-seguridad)
+- [Alcance de esta receta](#alcance-de-esta-receta)
 
 ## Alcance del repositorio
 
-Este repositorio documenta y organiza los componentes de infraestructura utilizados durante el desarrollo del proyecto de grado. No contiene el código fuente principal de los microservicios de Smart Campus UIS, sino los archivos relacionados con el despliegue, configuración y operación de las herramientas DevSecOps.
+Este repositorio documenta y organiza los componentes de infraestructura utilizados durante el desarrollo del proyecto de grado. No contiene el código fuente principal de los microservicios de Smart Campus UIS; contiene los archivos relacionados con el despliegue, configuración y operación de las herramientas DevSecOps.
 
 En esta implementación:
 
 - Jenkins fue desplegado como servicio contenerizado.
 - Jenkins quedó publicado detrás de un proxy reverso Nginx.
-- Nginx fue utilizado únicamente para el acceso a Jenkins.
+- Nginx fue utilizado únicamente para el acceso HTTPS a Jenkins.
 - SonarQube fue desplegado como servicio independiente.
 - SonarQube no quedó publicado detrás de Nginx.
+- SonarQube despliega su propio PostgreSQL dedicado dentro del mismo `compose.yml`.
+- PostgreSQL de SonarQube queda aislado en una red interna.
+- Jenkins y SonarQube comparten una red Docker para permitir el envío de análisis desde los pipelines.
 - Trivy no fue desplegado como servicio persistente.
 - Trivy se ejecuta temporalmente dentro del pipeline CD-01.
 - Los pipelines fueron configurados desde la interfaz de Jenkins y documentados en este repositorio para trazabilidad.
 
-## Estructura del repositorio
-
-```text
-.
-├── jenkins/
-│   ├── README.md
-│   ├── compose.yml
-│   ├── Dockerfile
-│   ├── plugins.txt
-│   ├── nginx/
-│   └── certs/
-│
-├── sonarqube/
-│   ├── README.md
-│   └── compose.yml
-│
-├── pipelines/
-│   ├── README.md
-│   ├── CI-01 Source Compile - Unit Validation.groovy
-│   ├── CI-02 Security - Quality Gate.groovy
-│   ├── CD-01 Containerization - Deployment.groovy
-│   └── Full Pipeline.groovy
-│
-└── README.md
-```
----
-
-# Receta de montaje de la infraestructura DevSecOps Smart Campus UIS
-
-Esta guía describe el paso a paso para reproducir el ambiente de infraestructura DevSecOps usado en el proyecto **Smart Campus UIS**. Está pensada como una receta práctica para el repositorio de infraestructura y complementa los README específicos de cada directorio.
-
-El montaje contempla:
-
-- Jenkins como orquestador CI/CD.
-- Nginx como proxy reverso únicamente para Jenkins.
-- Certificados internos/autofirmados para el acceso HTTPS a Jenkins.
-- SonarQube como servicio independiente para análisis SAST y Quality Gate.
-- OWASP Dependency-Check para análisis de composición de software.
-- Docker y Docker Compose para construcción y despliegue.
-- Trivy ejecutado temporalmente dentro del pipeline CD-01.
-- Pipelines configurados desde la interfaz de Jenkins y documentados en el repositorio.
-
-
----
-
-## 1. Lectura recomendada del repositorio
-
-Antes de ejecutar comandos, revisar los README de cada componente:
-
-```text
-infra-DevSecOps_SmartCampusUIS/
-├── README.md
-├── jenkins/
-│   ├── README.md
-│   └── certs/
-│       └── README.md
-├── sonarqube/
-│   └── README.md
-└── pipelines/
-    └── README.md
-```
-
-Uso recomendado de cada README:
-
-| Documento | Uso |
-|---|---|
-| `README.md` | Visión general del repositorio, alcance y estructura. |
-| `jenkins/README.md` | Despliegue de Jenkins, Nginx, variables, operación y consideraciones de seguridad. |
-| `jenkins/certs/README.md` | Generación y uso de certificados para Nginx/Jenkins. |
-| `sonarqube/README.md` | Despliegue, variables, volúmenes, acceso e integración con Jenkins. |
-| `pipelines/README.md` | Descripción de CI-01, CI-02, CD-01 y Full Pipeline. |
-
-Esta receta no reemplaza esos archivos. Los usa como base para ordenar el montaje completo.
-
----
-
-## 2. Arquitectura general
+## Arquitectura general
 
 El flujo DevSecOps se organiza en tres bloques funcionales:
 
@@ -112,9 +72,9 @@ Full Pipeline
     │       ├── Get Artifacts from Pipeline 1
     │       ├── Git checkout del commit construido
     │       ├── Prepare binaries for analysis
-    │       ├── Sonarqube Analysis
+    │       ├── SonarQube Analysis
     │       ├── Quality Gate
-    │       └── OWASP DEPENDENCY CHECK
+    │       └── OWASP Dependency-Check
     │
     └── CD-01 Containerization - Deployment
             ├── Get Artifacts from CI-01
@@ -123,14 +83,14 @@ Full Pipeline
             ├── Trivy scan
             ├── Docker push
             ├── Deploy dependencies
-            ├── Prepare telegraf config
-            ├── Deploy telegraf
+            ├── Prepare Telegraf config
+            ├── Deploy Telegraf
             ├── Deploy admin and data
             ├── Deploy remaining services
             └── Smoke Test
 ```
 
-Relación entre componentes:
+Relación general entre componentes:
 
 ```text
 Repositorio de código analizado
@@ -145,38 +105,270 @@ Jenkins + Nginx
         ├── Docker
         ├── Trivy temporal
         └── Docker Compose
+
+SonarQube
+        │
+        ▼
+PostgreSQL dedicado
 ```
 
----
+## Estructura del repositorio
 
-## 3. Requisitos previos del servidor
+```text
+.
+├── jenkins/
+│   ├── README.md
+│   ├── compose.yml
+│   ├── Dockerfile
+│   ├── plugins.txt
+│   ├── .env.example
+│   ├── casc/
+│   │   └── jenkins.yaml
+│   ├── nginx/
+│   │   └── default.conf
+│   └── certs/
+│       ├── README.md
+│       ├── gen_cert.sh
+│       └── openssl-ip.cnf.example
+│
+├── sonarqube/
+│   ├── README.md
+│   ├── compose.yml
+│   └── .env.example
+│
+├── pipelines/
+│   ├── README.md
+│   ├── CI-01 Source Compile - Unit Validation.groovy
+│   ├── CI-02 Security - Quality Gate.groovy
+│   ├── CD-01 Containerization - Deployment.groovy
+│   └── Full Pipeline.groovy
+│
+└── README.md
+```
+
+## Componentes principales
+
+| Componente | Rol dentro del proyecto |
+|---|---|
+| Jenkins | Orquestador principal del flujo CI/CD. |
+| Nginx | Proxy reverso HTTPS para Jenkins. |
+| SonarQube | Análisis estático de código y validación de Quality Gate. |
+| PostgreSQL | Base de datos dedicada para SonarQube. |
+| OWASP Dependency-Check | Análisis de dependencias y vulnerabilidades conocidas. |
+| Trivy | Escaneo temporal de imágenes Docker durante CD-01. |
+| Docker Compose | Despliegue de servicios del ambiente de pruebas. |
+
+## Redes Docker
+
+La implementación utiliza separación de redes para limitar la exposición de los componentes.
+
+```text
+jenkins_jenkins_net  -> Jenkins + Nginx + SonarQube
+sonarnet             -> SonarQube + PostgreSQL
+```
+
+Relación esperada:
+
+```text
+Jenkins  -------->  SonarQube  -------->  PostgreSQL
+        red CI/CD              red interna de SonarQube
+```
+
+Jenkins necesita comunicarse con SonarQube para enviar análisis y recibir resultados del Quality Gate. PostgreSQL no necesita ser accesible desde Jenkins, por lo que queda únicamente en `sonarnet`.
+
+El `compose.yml` de SonarQube espera que la red externa de Jenkins exista con el nombre:
+
+```text
+jenkins_jenkins_net
+```
+
+Por eso se recomienda levantar Jenkins con el nombre de proyecto `jenkins`, usando:
+
+```bash
+docker compose -p jenkins up -d --build
+```
+
+Si se levanta Jenkins con otro nombre de proyecto, la red generada puede cambiar y será necesario ajustar el `compose.yml` de SonarQube.
+
+## Requisitos previos del servidor
+
+### Dependencias requeridas
 
 El servidor de pruebas debe contar con:
 
-- Linux (En este proyecto de uso Rocky linux 9).
-- Docker.
-- Docker Compose.
-- Git.
+- Rocky Linux 9 o una distribución Linux compatible.
+- Usuario con permisos `sudo`.
 - Acceso a Internet.
-- Permisos para ejecutar contenedores.
+- Docker Engine.
+- Docker Compose v2 como plugin de Docker.
+- Git.
+- OpenSSL.
+- Curl.
+- Vim o editor de texto equivalente.
+- Firewall configurado según el ambiente.
 - Acceso al repositorio de infraestructura.
 - Acceso al repositorio de código analizado.
 - Credenciales de Docker Hub.
-- Token/API Key de NVD.
-- IP o nombre DNS definido para acceder a Jenkins.
-- IP o nombre DNS definido para acceder a SonarQube.
+- Token o API Key de NVD.
+- IP o nombre DNS definido para Jenkins.
+- IP o nombre DNS definido para SonarQube.
 
-Validar herramientas base:
+### Instalación de dependencias en Rocky Linux 9
+
+Actualizar el sistema:
+
+```bash
+sudo dnf update -y
+```
+
+Instalar utilidades base:
+
+```bash
+sudo dnf install -y git curl vim openssl dnf-plugins-core firewalld
+```
+
+Eliminar paquetes que puedan entrar en conflicto con Docker:
+
+```bash
+sudo dnf remove -y docker \
+  docker-client \
+  docker-client-latest \
+  docker-common \
+  docker-latest \
+  docker-latest-logrotate \
+  docker-logrotate \
+  docker-engine \
+  podman \
+  runc
+```
+
+Agregar el repositorio oficial de Docker para distribuciones compatibles con RHEL:
+
+```bash
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+```
+
+Instalar Docker Engine, Docker CLI, containerd, Buildx y Docker Compose plugin:
+
+```bash
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+```
+
+Habilitar e iniciar Docker:
+
+```bash
+sudo systemctl enable --now docker
+```
+
+Verificar estado del servicio:
+
+```bash
+sudo systemctl status docker
+```
+
+Validar Docker:
+
+```bash
+sudo docker run hello-world
+```
+
+Validar Docker Compose v2:
+
+```bash
+docker compose version
+```
+
+Agregar el usuario actual al grupo `docker`:
+
+```bash
+sudo usermod -aG docker $USER
+```
+
+Aplicar el cambio de grupo cerrando sesión y entrando nuevamente, o temporalmente con:
+
+```bash
+newgrp docker
+```
+
+Validar ejecución sin `sudo`:
+
+```bash
+docker ps
+```
+
+Verificar versiones base:
 
 ```bash
 docker --version
 docker compose version
 git --version
+openssl version
 ```
 
----
+### Ajustes recomendados para SonarQube
 
-## 4. Clonar el repositorio de infraestructura
+SonarQube utiliza Elasticsearch internamente, por lo que en Linux se recomienda ajustar límites del host.
+
+Aplicar ajustes en ejecución:
+
+```bash
+sudo sysctl -w vm.max_map_count=524288
+sudo sysctl -w fs.file-max=131072
+```
+
+Persistir configuración:
+
+```bash
+cat <<'EOF' | sudo tee /etc/sysctl.d/99-sonarqube.conf
+vm.max_map_count=524288
+fs.file-max=131072
+EOF
+```
+
+Aplicar configuración persistente:
+
+```bash
+sudo sysctl --system
+```
+
+Validar valores:
+
+```bash
+sysctl vm.max_map_count
+sysctl fs.file-max
+```
+
+### Validación de permisos de Docker para Jenkins
+
+El `compose.yml` de Jenkins monta el socket Docker del host:
+
+```text
+/var/run/docker.sock:/var/run/docker.sock
+```
+
+Por eso el contenedor de Jenkins debe tener permisos para usar el socket.
+
+Validar grupo del socket Docker en el host:
+
+```bash
+ls -l /var/run/docker.sock
+getent group docker
+```
+
+Si el grupo Docker del host no corresponde al valor configurado en `group_add` dentro de `jenkins/compose.yml`, ajustar ese valor.
+
+Ejemplo:
+
+```yaml
+group_add:
+  - "993"
+```
+
+El número debe coincidir con el GID del grupo que tiene permisos sobre `/var/run/docker.sock`.
+
+## Receta de montaje
+
+### 1. Clonar el repositorio
 
 ```bash
 git clone https://github.com/Izidr0x/infra-DevSecOps_SmartCampusUIS.git
@@ -189,18 +381,7 @@ Validar estructura:
 ls -la
 ```
 
-Estructura esperada:
-
-```text
-jenkins/
-pipelines/
-sonarqube/
-README.md
-```
-
----
-
-## 5. Preparar archivos `.env`
+### 2. Preparar archivos de variables
 
 Los archivos `.env` reales no deben subirse al repositorio.
 
@@ -230,7 +411,11 @@ TZ=America/Bogota
 Ejemplo conceptual para SonarQube:
 
 ```env
-SONAR_JDBC_URL=jdbc:postgresql://192.168.x.x:5432/sonar_db
+POSTGRES_DB=sonar_db
+POSTGRES_USER=sonar
+POSTGRES_PASSWORD=change_me
+
+SONAR_JDBC_URL=jdbc:postgresql://sonarqube_db:5432/sonar_db
 SONAR_JDBC_USERNAME=sonar
 SONAR_JDBC_PASSWORD=change_me
 ```
@@ -256,9 +441,7 @@ jenkins/certs/*.crt
 jenkins/certs/*.pem
 ```
 
----
-
-## 6. Preparar certificados para Jenkins/Nginx
+### 3. Generar certificados para Jenkins
 
 Jenkins es el único servicio publicado detrás de Nginx. El directorio de certificados aplica para el proxy Nginx que publica Jenkins con HTTPS interno.
 
@@ -280,7 +463,7 @@ Editar la IP o DNS del servidor:
 vim openssl-ip.cnf
 ```
 
-Ejemplo conceptual:
+Ejemplo conceptual para acceso por IP:
 
 ```ini
 [req]
@@ -302,6 +485,15 @@ extendedKeyUsage = serverAuth
 IP.1 = 192.168.x.x
 ```
 
+Si se accede por dominio, puede usarse una entrada DNS:
+
+```ini
+[alt_names]
+DNS.1 = jenkins.midominio.local
+```
+
+La IP o dominio configurado en `[alt_names]` debe coincidir con la dirección usada para acceder a Jenkins. Por ejemplo, si Jenkins se abre como `https://192.168.1.50`, entonces debe existir una entrada `IP.1 = 192.168.1.50`. Si se accede por dominio, debe existir una entrada `DNS.1 = nombre-del-dominio`.
+
 Generar certificado:
 
 ```bash
@@ -316,7 +508,7 @@ jenkins.crt
 jenkins.key
 ```
 
-> Estos archivos no deben versionarse en Git.
+Estos archivos no deben versionarse en Git.
 
 Validar certificado:
 
@@ -324,15 +516,13 @@ Validar certificado:
 openssl x509 -in jenkins.crt -text -noout
 ```
 
-Regresar al directorio principal del repositorio:
+Regresar al directorio principal:
 
 ```bash
 cd ../..
 ```
 
----
-
-## 7. Montar Jenkins con Nginx
+### 4. Levantar Jenkins con Nginx
 
 Entrar al directorio de Jenkins:
 
@@ -340,46 +530,23 @@ Entrar al directorio de Jenkins:
 cd jenkins
 ```
 
-Validar archivos principales:
+Levantar Jenkins y Nginx usando el nombre de proyecto esperado:
 
 ```bash
-ls -la
-```
-
-Archivos esperados:
-
-```text
-compose.yml
-Dockerfile
-plugins.txt
-.env
-.env.example
-casc/
-nginx/
-certs/
-README.md
-```
-
-Levantar Jenkins y Nginx:
-
-```bash
-docker compose up -d --build
+docker compose -p jenkins up -d --build
 ```
 
 Validar estado:
 
 ```bash
-docker compose ps
+docker compose -p jenkins ps
 ```
 
 Revisar logs:
 
 ```bash
-docker compose logs -f jenkins
-```
-
-```bash
-docker compose logs -f nginx
+docker compose -p jenkins logs -f jenkins
+docker compose -p jenkins logs -f nginx
 ```
 
 Validar acceso HTTPS:
@@ -396,168 +563,35 @@ https://IP_O_DNS_JENKINS/
 
 Si se usa certificado autofirmado, el navegador puede mostrar una advertencia de confianza.
 
----
-
-## 8. Validar persistencia de Jenkins
-
-Jenkins debe tener persistencia en `/var/jenkins_home`.
-
-Validar contenedores:
+Validar red creada por Jenkins:
 
 ```bash
-docker ps
+docker network ls
 ```
 
-Validar volúmenes:
-
-```bash
-docker volume ls
-```
-
-La persistencia permite conservar:
-
-- configuración interna;
-- usuarios;
-- credenciales;
-- jobs;
-- plugins;
-- historial de ejecuciones;
-- artefactos y reportes asociados a builds.
-
----
-
-## 9. Consideración sobre Docker en Jenkins
-
-El montaje permite que Jenkins interactúe con Docker del host para:
-
-- construir imágenes;
-- ejecutar Trivy como contenedor temporal;
-- publicar imágenes;
-- ejecutar Docker Compose;
-- desplegar servicios del ambiente de pruebas.
-
-Esto normalmente se realiza montando el socket:
+La red esperada es:
 
 ```text
-/var/run/docker.sock:/var/run/docker.sock
+jenkins_jenkins_net
 ```
 
-Validación dentro del contenedor:
-
-```bash
-docker exec -it jenkins bash
-docker ps
-```
-
-> Esta configuración es funcional para el ambiente de pruebas, pero debe considerarse sensible desde el punto de vista de seguridad porque otorga a Jenkins capacidad de operar sobre Docker del host.
-
----
-
-## 10. Configuración inicial de Jenkins
-
-Ingresar a Jenkins desde el navegador y completar la configuración inicial.
-
-Luego revisar:
-
-```text
-Manage Jenkins
-```
-
-Configurar o validar:
-
-- plugins;
-- herramientas globales;
-- credenciales;
-- SonarQube Server;
-- SonarScanner;
-- OWASP Dependency-Check;
-- Docker;
-- jobs tipo Pipeline.
-
----
-
-## 11. Plugins necesarios en Jenkins
-
-Instalar desde:
-
-```text
-Manage Jenkins > Plugins > Available plugins
-```
-
-Plugins principales:
-
-| Plugin | Uso |
-|---|---|
-| Pipeline | Crear y ejecutar pipelines. |
-| Git | Obtener código fuente desde GitHub. |
-| JUnit | Publicar resultados de pruebas unitarias. |
-| Copy Artifact | Copiar artefactos entre jobs. |
-| SonarQube Scanner for Jenkins | Integrar análisis de SonarQube. |
-| OWASP Dependency-Check | Ejecutar análisis SCA. |
-| Docker | Integración con Docker. |
-| Docker Pipeline | Uso de Docker en pipelines. |
-| Credentials Binding | Inyectar credenciales de forma segura. |
-| Configuration as Code | Soportar configuración declarativa inicial. |
-
----
-
-## 12. Configurar herramientas globales en Jenkins
-
-Ruta:
-
-```text
-Manage Jenkins > Tools
-```
-
-Configurar los nombres exactamente como los usan los pipelines.
-
-### 12.1 JDK
-
-Nombre:
-
-```text
-JDK-21
-```
-
-### 12.2 Maven
-
-Nombre:
-
-```text
-maven3
-```
-
-### 12.3 SonarScanner
-
-Nombre:
-
-```text
-sonar-scanner
-```
-
-### 12.4 OWASP Dependency-Check
-
-Nombre:
-
-```text
-Check-DP
-```
-
-### 12.5 Docker
-
-Nombre:
-
-```text
-docker
-```
-
----
-
-## 13. Montar SonarQube
+### 5. Levantar SonarQube con PostgreSQL
 
 SonarQube se despliega como servicio independiente. No queda detrás de Nginx.
 
-Entrar al directorio:
+Antes de levantarlo, confirmar que existe la red de Jenkins:
+
+```bash
+docker network ls | grep jenkins_jenkins_net
+```
+
+Si no existe, Jenkins no fue levantado con el nombre de proyecto esperado o la red debe crearse manualmente:
+
+```bash
+docker network create jenkins_jenkins_net
+```
+
+Entrar al directorio de SonarQube:
 
 ```bash
 cd ../sonarqube
@@ -575,7 +609,7 @@ Editar variables:
 vim .env
 ```
 
-Levantar SonarQube:
+Levantar SonarQube y PostgreSQL:
 
 ```bash
 docker compose up -d
@@ -591,6 +625,7 @@ Revisar logs:
 
 ```bash
 docker compose logs -f sonarqube
+docker compose logs -f sonarqube_db
 ```
 
 Acceso:
@@ -599,69 +634,74 @@ Acceso:
 http://IP_O_DNS_SONARQUBE:9000
 ```
 
----
+En un montaje desde cero, PostgreSQL crea automáticamente la base de datos y el usuario indicados en el `.env`, siempre que el volumen de datos esté vacío o no exista previamente.
 
-## 14. Validar persistencia de SonarQube
-
-SonarQube usa volúmenes para conservar:
-
-- configuración;
-- datos;
-- logs;
-- extensiones;
-- plugins.
-
-Validar volúmenes:
+Validar base creada:
 
 ```bash
-docker volume ls
+docker exec -it sonarqube_postgres psql -U sonar -d postgres -c "\l"
 ```
 
-Verificar que el servicio pueda conectarse a PostgreSQL según la configuración del `compose.yml` y las variables definidas.
+### 6. Configurar Jenkins
 
----
+Ingresar a Jenkins y validar:
 
-## 15. Configurar SonarQube para integrarse con Jenkins
+```text
+Manage Jenkins
+```
 
-### 15.1 Crear token en SonarQube
+Configurar o verificar:
 
-Ruta general:
+- plugins;
+- herramientas globales;
+- credenciales;
+- SonarQube Server;
+- SonarScanner;
+- OWASP Dependency-Check;
+- Docker;
+- jobs tipo Pipeline.
+
+Herramientas esperadas por los pipelines:
+
+| Herramienta | Nombre esperado |
+|---|---|
+| JDK | `JDK-21` |
+| Maven | `maven3` |
+| SonarScanner | `sonar-scanner` |
+| OWASP Dependency-Check | `Check-DP` |
+| Docker | `docker` |
+
+### 7. Configurar SonarQube
+
+Crear token para Jenkins:
 
 ```text
 SonarQube > Administration > Security > Users > Tokens
 ```
 
-Crear un token para Jenkins y copiarlo.
-
-### 15.2 Registrar token en Jenkins
-
-Ruta:
+Registrar token en Jenkins:
 
 ```text
 Manage Jenkins > Credentials > Global > Add credentials
 ```
 
-Tipo:
+Tipo recomendado:
 
 ```text
 Secret text
 ```
 
-Guardar el token.
-
-### 15.3 Registrar SonarQube Server en Jenkins
-
-Ruta:
+Registrar servidor SonarQube en Jenkins:
 
 ```text
 Manage Jenkins > System > SonarQube servers
 ```
 
-Valores:
+Valores esperados:
 
 ```text
 Name: Sonarqube-server
-Server URL: http://IP_O_DNS_SONARQUBE:9000
+Server URL: http://sonarqube:9000
 Authentication token: credencial creada en Jenkins
 ```
 
@@ -671,128 +711,25 @@ El nombre debe coincidir con el pipeline:
 withSonarQubeEnv('Sonarqube-server')
 ```
 
----
-
-## 16. Crear Quality Gate en SonarQube
-
-Ruta:
-
-```text
-SonarQube > Quality Gates
-```
-
-Crear un Quality Gate para el proyecto, por ejemplo:
-
-```text
-SmartCampus
-```
-
-Configurar condiciones mínimas de calidad y seguridad según el alcance del ambiente de pruebas.
-
----
-
-## 17. Configurar webhook de SonarQube hacia Jenkins
-
-Para que Jenkins pueda usar `waitForQualityGate`, SonarQube debe notificar el resultado del análisis.
-
-Ruta:
+Para que `waitForQualityGate` funcione, configurar el webhook en SonarQube:
 
 ```text
 SonarQube > Administration > Configuration > Webhooks
 ```
 
-URL sugerida:
-
-```text
-https://IP_O_DNS_JENKINS/sonarqube-webhook/
-```
-
-Si se usa comunicación interna y es alcanzable desde SonarQube:
+URL recomendada si SonarQube y Jenkins se comunican por la red Docker compartida:
 
 ```text
 http://jenkins:8080/sonarqube-webhook/
 ```
 
-Validar conectividad desde SonarQube hacia Jenkins.
-
----
-
-## 18. Configurar credencial NVD para OWASP Dependency-Check
-
-Crear o disponer de una API Key de NVD.
-
-Registrar en Jenkins:
+URL alternativa si se usa el acceso HTTPS externo por Nginx:
 
 ```text
-Manage Jenkins > Credentials > Global > Add credentials
+https://IP_O_DNS_JENKINS/sonarqube-webhook/
 ```
 
-Tipo:
-
-```text
-Secret text
-```
-
-ID recomendado:
-
-```text
-nvd-api-key
-```
-
-El pipeline CI-02 espera usar:
-
-```groovy
-NVD_API_KEY = credentials('nvd-api-key')
-```
-
----
-
-## 19. Configurar credenciales de Docker Hub
-
-Registrar credenciales:
-
-```text
-Manage Jenkins > Credentials > Global > Add credentials
-```
-
-Tipo:
-
-```text
-Username with password
-```
-
-Usar usuario y token/contraseña de Docker Hub.
-
-Revisar que el `credentialsId` usado en el pipeline CD-01 coincida con la credencial creada.
-
----
-
-## 20. Preparar repositorio del código analizado
-
-El código fuente analizado por el pipeline se encuentra en:
-
-```text
-https://github.com/PWN3D777/DevSecOps_SmartCampusUIS.git
-```
-
-Los pipelines clonan este repositorio durante la ejecución.
-
-Componentes principales:
-
-```text
-admin_microservice/
-data_microservice/
-```
-
-El pipeline actualizado considera que el artefacto del microservicio de datos queda en:
-
-```text
-data_microservice/application/target/*.jar
-```
-
----
-
-## 21. Crear jobs en Jenkins
+### 8. Crear los jobs de pipeline
 
 Los pipelines se crean como `Pipeline script` desde la interfaz de Jenkins.
 
@@ -811,25 +748,27 @@ CD-01 Containerization - Deployment
 Full Pipeline
 ```
 
-> Los nombres deben coincidir porque `copyArtifacts` y `build job` dependen de ellos.
+Los nombres deben coincidir porque `copyArtifacts` y `build job` dependen de ellos.
 
----
+Pegar el contenido de los archivos del directorio `pipelines/` en cada job correspondiente.
 
-## 22. Crear CI-01 Source Compile - Unit Validation
+### 9. Ejecutar validación por bloques
 
-Crear job:
+Orden recomendado:
 
-```text
-New Item > CI-01 Source Compile - Unit Validation > Pipeline
-```
+1. Ejecutar CI-01.
+2. Validar artefactos y resultados JUnit.
+3. Ejecutar CI-02.
+4. Validar SonarQube, Quality Gate y Dependency-Check.
+5. Ejecutar CD-01.
+6. Validar imágenes, Trivy, Docker push, despliegue y Smoke Test.
+7. Ejecutar Full Pipeline.
 
-Pegar el contenido de:
+## Pipelines implementados
 
-```text
-pipelines/CI-01 Source Compile - Unit Validation.groovy
-```
+### CI-01 Source Compile - Unit Validation
 
-Este pipeline hace:
+Este pipeline realiza:
 
 - checkout del repositorio;
 - selección de rama;
@@ -841,7 +780,7 @@ Este pipeline hace:
 - publicación de resultados JUnit;
 - archivado de artefactos.
 
-Validar que archive:
+Artefactos esperados:
 
 ```text
 admin_microservice/target/*.jar
@@ -850,25 +789,9 @@ data_microservice/application/target/*.jar
 **/Dockerfile
 ```
 
-Ejecutar job y validar resultado.
+### CI-02 Security - Quality Gate
 
----
-
-## 23. Crear CI-02 Security - Quality Gate
-
-Crear job:
-
-```text
-New Item > CI-02 Security - Quality Gate > Pipeline
-```
-
-Pegar el contenido de:
-
-```text
-pipelines/CI-02 Security - Quality Gate.groovy
-```
-
-Este pipeline hace:
+Este pipeline realiza:
 
 - recuperación de artefactos de CI-01;
 - lectura del archivo `.git_commit`;
@@ -880,7 +803,7 @@ Este pipeline hace:
 - publicación del reporte XML;
 - archivado de evidencias.
 
-Validar que existan:
+Elementos requeridos:
 
 ```text
 JDK-21
@@ -891,25 +814,9 @@ Check-DP
 nvd-api-key
 ```
 
-Ejecutar job y validar resultado.
+### CD-01 Containerization - Deployment
 
----
-
-## 24. Crear CD-01 Containerization - Deployment
-
-Crear job:
-
-```text
-New Item > CD-01 Containerization - Deployment > Pipeline
-```
-
-Pegar el contenido de:
-
-```text
-pipelines/CD-01 Containerization - Deployment.groovy
-```
-
-Este pipeline hace:
+Este pipeline realiza:
 
 - recuperación de artefactos de CI-01;
 - lectura de `.git_commit`;
@@ -922,33 +829,26 @@ Este pipeline hace:
 - preparación y recreación de Telegraf;
 - Smoke Test.
 
-Validar que Jenkins tenga acceso a Docker:
-
-```bash
-docker exec -it jenkins bash
-docker ps
-docker compose version
-```
-
-Ejecutar job y validar resultado.
-
----
-
-## 25. Crear Full Pipeline
-
-Crear job:
+Servicios validados en el Smoke Test:
 
 ```text
-New Item > Full Pipeline > Pipeline
+db
+mongo
+emqx
+influxdb
+rabbitmq
+minio
+telegraf
+admin
+data
+gateway
+frontend
+grafana
 ```
 
-Pegar el contenido de:
+### Full Pipeline
 
-```text
-pipelines/Full Pipeline.groovy
-```
-
-Este pipeline ejecuta:
+Este pipeline ejecuta en orden:
 
 ```text
 CI-01 Source Compile - Unit Validation
@@ -958,178 +858,208 @@ CD-01 Containerization - Deployment
 
 Sirve para lanzar el flujo completo desde un solo job.
 
----
+## Credenciales requeridas
 
-## 26. Ejecutar validación por bloques
+| Credencial | Tipo recomendado | Uso |
+|---|---|---|
+| Token de SonarQube | `Secret text` | Permitir que Jenkins envíe análisis a SonarQube. |
+| `nvd-api-key` | `Secret text` | API Key usada por OWASP Dependency-Check. |
+| Docker Hub | `Username with password` | Publicar imágenes Docker. |
 
-Orden recomendado:
-
-```text
-1. Ejecutar CI-01.
-2. Validar artefactos y JUnit.
-3. Ejecutar CI-02.
-4. Validar SonarQube, Quality Gate y Dependency-Check.
-5. Ejecutar CD-01.
-6. Validar imágenes, Trivy, Docker push, despliegue y Smoke Test.
-7. Ejecutar Full Pipeline.
-```
-
----
-
-## 27. Validaciones esperadas por pipeline
-
-### 27.1 CI-01
-
-Debe evidenciar:
-
-- checkout correcto;
-- commit registrado en `.git_commit`;
-- compilación de `admin_microservice`;
-- compilación de `data_microservice`;
-- pruebas unitarias ejecutadas;
-- artefactos `.jar` generados;
-- resultados JUnit publicados;
-- artefactos archivados.
-
-### 27.2 CI-02
-
-Debe evidenciar:
-
-- recuperación de artefactos desde CI-01;
-- checkout del mismo commit;
-- compilación previa para binarios de análisis;
-- análisis SonarQube ejecutado;
-- Quality Gate con estado recibido por Jenkins;
-- fallo explícito si el Quality Gate no es `OK`;
-- Dependency-Check ejecutado;
-- reporte `dependency-check-report.xml` archivado.
-
-### 27.3 CD-01
-
-Debe evidenciar:
-
-- recuperación de artefactos desde CI-01;
-- checkout del mismo commit;
-- imágenes Docker construidas;
-- Trivy ejecutado como contenedor temporal;
-- reportes `admin-trivy.txt` y `data-trivy.txt` archivados;
-- imágenes publicadas en Docker Hub;
-- dependencias desplegadas;
-- Telegraf preparado y recreado;
-- microservicios desplegados;
-- gateway, frontend y grafana desplegados;
-- Smoke Test exitoso.
-
----
-
-## 28. Validar Trivy
-
-Trivy no se despliega como servicio persistente.
-
-Se ejecuta temporalmente desde CD-01 con:
+Nota importante: en el pipeline CD-01 la credencial de Docker Hub aparece con `credentialsId: '2'`. Se debe crear una credencial con ese ID o modificar el pipeline para usar un ID más descriptivo, por ejemplo:
 
 ```text
-aquasec/trivy:latest
+docker-hub-credentials
 ```
 
-El análisis actualizado considera severidades:
+
+### Obtención del token NVD
+
+OWASP Dependency-Check consulta información de vulnerabilidades desde la National Vulnerability Database. Para evitar demoras o límites más restrictivos durante la actualización de datos, se recomienda usar una API Key de NVD.
+
+Pasos para solicitarla:
+
+1. Ingresar al portal oficial de solicitud de API Key de NVD:
+
+   ```text
+   https://nvd.nist.gov/developers/request-an-api-key
+   ```
+
+2. Diligenciar los campos solicitados:
+
+   ```text
+   Organization Name
+   Email Address
+   Organization Type
+   ```
+
+   Para un montaje académico o de laboratorio, puede usarse la opción de organización que mejor represente el caso. Si aplica, puede seleccionarse una opción relacionada con uso académico o personal.
+
+3. Leer los términos de uso, desplazarse hasta el final del acuerdo y marcar la aceptación de términos.
+
+4. Enviar la solicitud.
+
+5. Revisar el correo registrado. NVD envía un enlace de un solo uso para activar y visualizar la API Key.
+
+6. Abrir el enlace recibido y copiar la API Key en un lugar seguro.
+
+7. Guardar la API Key inmediatamente. No debe almacenarse en archivos versionados, capturas públicas ni documentación del repositorio.
+
+Notas importantes:
+
+- El enlace de activación enviado por NVD es de un solo uso.
+- Si la clave no se activa dentro del plazo indicado por NVD, se debe realizar una nueva solicitud.
+- Si se genera una nueva clave para el mismo correo, la clave anterior puede quedar desactivada.
+- La API Key debe tratarse como una credencial sensible, aunque su uso sea para consultar información pública de vulnerabilidades.
+
+### Registro del token NVD en Jenkins
+
+Después de obtener la API Key de NVD, se debe registrar en Jenkins como credencial segura.
+
+Ruta recomendada:
 
 ```text
-UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL
+Manage Jenkins > Credentials > System > Global credentials > Add Credentials
 ```
 
-Reportes esperados:
+Configurar la credencial así:
 
 ```text
-trivy-reports/admin-trivy.txt
-trivy-reports/data-trivy.txt
+Kind: Secret text
+Secret: <API_KEY_DE_NVD>
+ID: nvd-api-key
+Description: NVD API Key para OWASP Dependency-Check
 ```
 
----
-
-## 29. Validar despliegue con Docker Compose
-
-El pipeline CD-01 despliega progresivamente.
-
-Primero dependencias:
+El valor importante es el ID:
 
 ```text
-db
-mongo
-emqx
-influxdb
-rabbitmq
-minio
+nvd-api-key
 ```
 
-Luego Telegraf:
+Ese ID debe coincidir con el usado en el pipeline CI-02. De esa forma, Jenkins puede inyectar la API Key durante la ejecución sin dejarla escrita directamente en el script.
 
-```text
-telegraf
+Ejemplo conceptual de uso en pipeline:
+
+```groovy
+withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+    sh '''
+        dependency-check.sh \
+          --project smart-campus-uis \
+          --scan . \
+          --format XML \
+          --out dependency-check-report \
+          --nvdApiKey "$NVD_API_KEY"
+    '''
+}
 ```
 
-Luego microservicios principales:
+En el pipeline real, el uso puede variar según la configuración del plugin OWASP Dependency-Check en Jenkins, pero la idea se mantiene: la API Key debe estar guardada como credencial y no escrita directamente en el repositorio.
 
-```text
-admin
-data
+## Variables y valores que deben ajustarse
+
+Antes de ejecutar los pipelines, revisar especialmente:
+
+| Ubicación | Valor | Ajuste requerido |
+|---|---|---|
+| `jenkins/.env` | `JENKINS_URL` | Debe apuntar a la URL real de Jenkins por HTTPS. |
+| `jenkins/.env` | `JENKINS_ADMIN_PASSWORD` | Debe reemplazarse por una contraseña segura. |
+| `jenkins/nginx/default.conf` | `server_name` | Debe coincidir con la IP o DNS de Jenkins. |
+| `jenkins/nginx/default.conf` | reglas `allow` | Deben ajustarse a las redes autorizadas del ambiente. |
+| `jenkins/certs/openssl-ip.cnf` | `CN` y `[alt_names]` | Deben coincidir con la IP o DNS usada para Jenkins. |
+| `jenkins/compose.yml` | `group_add` | Debe coincidir con el GID del grupo Docker del host. |
+| `sonarqube/.env` | `POSTGRES_PASSWORD` | Debe reemplazarse por una contraseña segura. |
+| `sonarqube/.env` | `SONAR_JDBC_URL` | Debe apuntar a `sonarqube_db` y a la base definida. |
+| `pipelines/CD-01...groovy` | `DOCKER_NAMESPACE` | Debe coincidir con el namespace real en Docker Hub. |
+| `pipelines/CD-01...groovy` | `credentialsId: '2'` | Debe coincidir con la credencial real de Docker Hub. |
+| `pipelines/CD-01...groovy` | `HOST_IP` | Debe coincidir con la IP real del host donde responde la aplicación. |
+| Jenkins Tools | `JDK-21`, `maven3`, `sonar-scanner`, `Check-DP`, `docker` | Los nombres deben coincidir exactamente con los usados por los pipelines. |
+
+## Operación básica
+
+### Jenkins
+
+Desde `jenkins/`:
+
+```bash
+docker compose -p jenkins ps
+docker compose -p jenkins logs -f jenkins
+docker compose -p jenkins logs -f nginx
+docker compose -p jenkins down
+docker compose -p jenkins up -d --build
 ```
 
-Luego servicios complementarios:
+Validar acceso HTTPS:
 
-```text
-gateway
-frontend
-grafana
+```bash
+curl -k https://IP_O_DNS_JENKINS/login
 ```
 
-Validación manual:
+Validar Docker dentro del contenedor:
+
+```bash
+docker exec -it jenkins-controller bash
+docker ps
+docker compose version
+```
+
+### SonarQube
+
+Desde `sonarqube/`:
 
 ```bash
 docker compose ps
+docker compose logs -f sonarqube
+docker compose logs -f sonarqube_db
+docker compose restart sonarqube
+docker compose restart sonarqube_db
+docker compose down
+docker compose up -d
 ```
 
----
+Validar bases en PostgreSQL:
 
-## 30. Validar Smoke Test
-
-El Smoke Test debe comprobar que estén corriendo:
-
-```text
-db
-mongo
-emqx
-influxdb
-rabbitmq
-minio
-telegraf
-admin
-data
-gateway
-frontend
-grafana
+```bash
+docker exec -it sonarqube_postgres psql -U sonar -d postgres -c "\l"
 ```
 
-También valida conectividad HTTP hacia:
+Validar conexión directa a la base de SonarQube:
 
-```text
-data     -> http://IP_DEL_HOST:8082/actuator/health
-gateway  -> http://IP_DEL_HOST:8080/
-frontend -> http://IP_DEL_HOST:4000/
+```bash
+docker exec -it sonarqube_postgres psql -U sonar -d sonar_db
 ```
 
-Un código HTTP `000` indica que el servicio no respondió y debe tratarse como fallo.
+Salir de PostgreSQL:
 
----
+```sql
+\q
+```
 
-## 31. Evidencias a conservar
+### Redes
+
+Validar red de Jenkins:
+
+```bash
+docker network inspect jenkins_jenkins_net
+```
+
+Validar red interna de SonarQube:
+
+```bash
+docker network ls
+docker network inspect sonarqube_sonarnet
+```
+
+El nombre real de la red interna puede cambiar según el nombre del proyecto Compose usado para SonarQube.
+
+## Evidencias a conservar
 
 Guardar evidencias de:
 
 - consola de Jenkins;
 - Stage View;
 - resultados JUnit;
-- `.git_commit`;
+- archivo `.git_commit`;
 - artefactos `.jar`;
 - análisis SonarQube;
 - resultado del Quality Gate;
@@ -1148,44 +1078,14 @@ Estas evidencias soportan la trazabilidad entre:
 - hallazgos de seguridad;
 - despliegue validado.
 
----
+## Problemas comunes
 
-## 32. Operación básica
-
-### 32.1 Jenkins
-
-Desde `jenkins/`:
-
-```bash
-docker compose ps
-docker compose logs -f jenkins
-docker compose logs -f nginx
-docker compose down
-docker compose up -d --build
-```
-
-### 32.2 SonarQube
-
-Desde `sonarqube/`:
-
-```bash
-docker compose ps
-docker compose logs -f sonarqube
-docker compose restart sonarqube
-docker compose down
-docker compose up -d
-```
-
----
-
-## 33. Problemas comunes
-
-### 33.1 Jenkins no puede ejecutar Docker
+### Jenkins no puede ejecutar Docker
 
 Validar:
 
 ```bash
-docker exec -it jenkins bash
+docker exec -it jenkins-controller bash
 docker ps
 ```
 
@@ -1194,10 +1094,78 @@ Revisar:
 - montaje de `/var/run/docker.sock`;
 - permisos del usuario Jenkins;
 - cliente Docker dentro del contenedor;
-- grupo Docker;
-- configuración del `compose.yml`.
+- grupo Docker del host;
+- valor `group_add` en `jenkins/compose.yml`.
 
-### 33.2 CI-02 no recupera artefactos
+### Nginx no permite acceso a Jenkins
+
+Revisar:
+
+```bash
+docker compose -p jenkins logs -f nginx
+```
+
+Validar en `jenkins/nginx/default.conf`:
+
+- `server_name`;
+- certificados;
+- redes permitidas con `allow`;
+- puerto `443`;
+- reglas de firewall del host.
+
+### SonarQube no arranca por Elasticsearch
+
+Validar límites del host:
+
+```bash
+sysctl vm.max_map_count
+sysctl fs.file-max
+```
+
+Aplicar ajustes si es necesario:
+
+```bash
+sudo sysctl -w vm.max_map_count=524288
+sudo sysctl -w fs.file-max=131072
+```
+
+### SonarQube no conecta a PostgreSQL
+
+Validar que el JDBC apunte al servicio correcto:
+
+```env
+SONAR_JDBC_URL=jdbc:postgresql://sonarqube_db:5432/sonar_db
+```
+
+Validar bases existentes:
+
+```bash
+docker exec -it sonarqube_postgres psql -U sonar -d postgres -c "\l"
+```
+
+Si el volumen de PostgreSQL ya existía, cambiar `POSTGRES_DB` en `.env` no recrea automáticamente la base. Para un montaje limpio, si no hay datos que conservar:
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+### Jenkins no alcanza SonarQube
+
+Validar que SonarQube esté conectado a la red de Jenkins:
+
+```bash
+docker network inspect jenkins_jenkins_net
+```
+
+Desde Jenkins:
+
+```bash
+docker exec -it jenkins-controller bash
+curl -I http://sonarqube:9000
+```
+
+### CI-02 no recupera artefactos
 
 Revisar:
 
@@ -1206,25 +1174,7 @@ Revisar:
 - que el nombre del job coincida exactamente;
 - que los patrones de `copyArtifacts` coincidan con las rutas reales.
 
-### 33.3 SonarQube no responde
-
-Revisar:
-
-```bash
-cd sonarqube
-docker compose ps
-docker compose logs -f sonarqube
-```
-
-Validar:
-
-- puerto 9000;
-- conexión a PostgreSQL;
-- recursos de memoria;
-- variables de entorno;
-- estado de los volúmenes.
-
-### 33.4 Quality Gate queda esperando
+### Quality Gate queda esperando
 
 Revisar:
 
@@ -1234,7 +1184,7 @@ Revisar:
 - nombre `Sonarqube-server`;
 - token configurado.
 
-### 33.5 OWASP Dependency-Check falla
+### OWASP Dependency-Check falla
 
 Revisar:
 
@@ -1244,7 +1194,7 @@ Revisar:
 - configuración `Check-DP`;
 - parámetro `--nvdApiDelay`.
 
-### 33.6 Trivy no encuentra imágenes
+### Trivy no encuentra imágenes
 
 Revisar:
 
@@ -1254,7 +1204,7 @@ Revisar:
 - acceso al socket Docker;
 - existencia local de las imágenes.
 
-### 33.7 Smoke Test falla
+### Smoke Test falla
 
 Revisar:
 
@@ -1272,40 +1222,21 @@ Validar:
 - IP usada en el pipeline;
 - URL `/actuator/health` del servicio `data`.
 
----
+## Consideraciones de seguridad
 
-## 34. Orden resumido de montaje
+- No versionar archivos `.env` reales.
+- No versionar contraseñas, tokens ni llaves privadas.
+- No subir certificados generados localmente.
+- Restringir el acceso HTTPS a Jenkins desde Nginx.
+- Revisar las reglas `allow` y `deny` del proxy Nginx.
+- Usar tokens de acceso para integraciones.
+- Mantener PostgreSQL de SonarQube sin publicar el puerto `5432`.
+- Mantener PostgreSQL solo en la red interna `sonarnet`.
+- Tratar el montaje de `/var/run/docker.sock` como un permiso sensible.
+- Cambiar contraseñas de ejemplo antes de desplegar.
+- Realizar backups periódicos de la base de datos de SonarQube y de los volúmenes relevantes.
 
-```text
-1. Preparar servidor Linux.
-2. Instalar Docker, Docker Compose y Git.
-3. Clonar repositorio de infraestructura.
-4. Crear archivos .env locales desde .env.example.
-5. Generar certificados internos para Jenkins/Nginx.
-6. Levantar Jenkins + Nginx.
-7. Entrar a Jenkins y completar configuración inicial.
-8. Instalar plugins requeridos.
-9. Configurar JDK-21, Maven, Docker, SonarScanner y Dependency-Check.
-10. Levantar SonarQube.
-11. Crear token de SonarQube.
-12. Registrar token de SonarQube en Jenkins Credentials.
-13. Registrar servidor Sonarqube-server en Jenkins.
-14. Crear Quality Gate.
-15. Configurar webhook de SonarQube hacia Jenkins.
-16. Registrar credencial nvd-api-key.
-17. Registrar credenciales de Docker Hub.
-18. Crear jobs CI-01, CI-02, CD-01 y Full Pipeline.
-19. Pegar scripts desde pipelines/ en cada job.
-20. Ejecutar CI-01.
-21. Ejecutar CI-02.
-22. Ejecutar CD-01.
-23. Ejecutar Full Pipeline.
-24. Validar artefactos, reportes, imágenes y Smoke Test.
-```
-
----
-
-## 35. Alcance de esta receta
+## Alcance de esta receta
 
 Esta receta cubre el montaje del ambiente de pruebas usado para validar la arquitectura DevSecOps del proyecto.
 
@@ -1315,6 +1246,7 @@ Incluye:
 - Nginx para Jenkins;
 - certificados internos;
 - SonarQube;
+- PostgreSQL dedicado para SonarQube;
 - Quality Gate;
 - OWASP Dependency-Check;
 - Docker;
